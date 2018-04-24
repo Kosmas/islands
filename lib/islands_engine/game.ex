@@ -24,13 +24,22 @@ defmodule IslandsEngine.Game do
     GenServer.call(game, {:guess_coordinate, player, row, col})
 
   def init(name) do
-    player1 = %{name: name, board: Board.new(), guesses: Guesses.new()}
-    player2 = %{name: nil,  board: Board.new(), guesses: Guesses.new()}
-    {:ok, %{player1: player1, player2: player2, rules: %Rules{}}, @timeout}
+    send(self(), {:set_state, name})
+    {:ok, fresh_state(name)}
   end
 
   def handle_info(:timeout, state_data) do
     {:stop, {:shutdown, :timeout}, state_data}
+  end
+
+  def handle_info({:set_state, name}, _state_data) do
+    state_data =
+    case :ets.lookup(:game_state, name) do
+      []  -> fresh_state(name)
+      [{_key, state}] -> state
+    end
+    :ets.insert(:game_state, {name, state_data})
+    {:noreply, state_data, @timeout}
   end
 
   def handle_call({:add_player, name}, _from, state_data) do
@@ -129,7 +138,14 @@ defmodule IslandsEngine.Game do
     end)
   end
 
+  defp fresh_state(name) do
+    player1 = %{name: name, board: Board.new(), guesses: Guesses.new()}
+    player2 = %{name: nil,  board: Board.new(), guesses: Guesses.new()}
+    %{player1: player1, player2: player2, rules: %Rules{}}
+  end
+
   defp reply_success(state_data, reply) do
-     {:reply, reply, state_data, @timeout}
+    :ets.insert(:game_state, {state_data.player1.name, state_data})
+    {:reply, reply, state_data, @timeout}
   end
 end
